@@ -28,59 +28,70 @@
 
 #include <Eigen/Core>
 #include <memory>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "Open3D/Geometry/Geometry3D.h"
+#include "Open3D/Geometry/Image.h"
+#include "Open3D/Geometry/MeshBase.h"
 #include "Open3D/Utility/Helper.h"
 
 namespace open3d {
 namespace geometry {
 
 class PointCloud;
+class TetraMesh;
 
-class TriangleMesh : public Geometry3D {
+class TriangleMesh : public MeshBase {
 public:
-    /// Indicates the method that is used for mesh simplification if multiple
-    /// vertices are combined to a single one.
-    /// \param Average indicates that the average position is computed as
-    /// output.
-    /// \param Quadric indicates that the distance to the adjacent triangle
-    /// planes is minimized. Cf. "Simplifying Surfaces with Color and Texture
-    /// using Quadric Error Metrics" by Garland and Heckbert.
-    enum class SimplificationContraction { Average, Quadric };
-
-    /// Indicates the scope of filter operations.
-    /// \param All indicates that all properties (color, normal,
-    /// vertex position) are filtered.
-    /// \param Color indicates that only the colors are filtered.
-    /// \param Normal indicates that only the normals are filtered.
-    /// \param Vertex indicates that only the vertex positions are filtered.
-    enum class FilterScope { All, Color, Normal, Vertex };
-
-    TriangleMesh() : Geometry3D(Geometry::GeometryType::TriangleMesh) {}
+    TriangleMesh() : MeshBase(Geometry::GeometryType::TriangleMesh) {}
+    TriangleMesh(const std::vector<Eigen::Vector3d> &vertices,
+                 const std::vector<Eigen::Vector3i> &triangles)
+        : MeshBase(Geometry::GeometryType::TriangleMesh, vertices),
+          triangles_(triangles) {}
     ~TriangleMesh() override {}
 
 public:
-    TriangleMesh &Clear() override;
-    bool IsEmpty() const override;
-    Eigen::Vector3d GetMinBound() const override;
-    Eigen::Vector3d GetMaxBound() const override;
-    Eigen::Vector3d GetCenter() const override;
-    AxisAlignedBoundingBox GetAxisAlignedBoundingBox() const override;
-    OrientedBoundingBox GetOrientedBoundingBox() const override;
-    TriangleMesh &Transform(const Eigen::Matrix4d &transformation) override;
-    TriangleMesh &Translate(const Eigen::Vector3d &translation,
-                            bool relative = true) override;
-    TriangleMesh &Scale(const double scale, bool center = true) override;
-    TriangleMesh &Rotate(const Eigen::Vector3d &rotation,
-                         bool center = true,
-                         RotationType type = RotationType::XYZ) override;
+    virtual TriangleMesh &Clear() override;
+    virtual TriangleMesh &Transform(
+            const Eigen::Matrix4d &transformation) override;
+    virtual TriangleMesh &Rotate(const Eigen::Matrix3d &R,
+                                 bool center = true) override;
 
 public:
     TriangleMesh &operator+=(const TriangleMesh &mesh);
     TriangleMesh operator+(const TriangleMesh &mesh) const;
+
+    bool HasTriangles() const {
+        return vertices_.size() > 0 && triangles_.size() > 0;
+    }
+
+    bool HasTriangleNormals() const {
+        return HasTriangles() && triangles_.size() == triangle_normals_.size();
+    }
+
+    bool HasAdjacencyList() const {
+        return vertices_.size() > 0 &&
+               adjacency_list_.size() == vertices_.size();
+    }
+
+    bool HasTriangleUvs() const {
+        return HasTriangles() && triangle_uvs_.size() == 3 * triangles_.size();
+    }
+
+    bool HasTexture() const { return !texture_.IsEmpty(); }
+
+    TriangleMesh &NormalizeNormals() {
+        MeshBase::NormalizeNormals();
+        for (size_t i = 0; i < triangle_normals_.size(); i++) {
+            triangle_normals_[i].normalize();
+            if (std::isnan(triangle_normals_[i](0))) {
+                triangle_normals_[i] = Eigen::Vector3d(0.0, 0.0, 1.0);
+            }
+        }
+        return *this;
+    }
 
     /// Function to compute triangle normals, usually called before rendering
     TriangleMesh &ComputeTriangleNormals(bool normalized = true);
@@ -112,6 +123,12 @@ public:
     /// triangles with the smallest surface area adjacent to the non-manifold
     /// edge until the number of adjacent triangles to the edge is `<= 2`.
     TriangleMesh &RemoveNonManifoldEdges();
+
+    /// Function that will merge close by vertices to a single one. The vertex
+    /// position, normal and color will be the average of the vertices. The
+    /// parameter \param eps defines the maximum distance of close by vertices.
+    /// This function might help to close triangle soups.
+    TriangleMesh &MergeCloseVertices(double eps);
 
     /// Function to sharpen triangle mesh. The output value ($v_o$) is the
     /// input value ($v_i$) plus \param strength times the input value minus
@@ -159,53 +176,6 @@ public:
             double lambda = 0.5,
             double mu = -0.53,
             FilterScope scope = FilterScope::All) const;
-
-    bool HasVertices() const { return vertices_.size() > 0; }
-
-    bool HasTriangles() const {
-        return vertices_.size() > 0 && triangles_.size() > 0;
-    }
-
-    bool HasVertexNormals() const {
-        return vertices_.size() > 0 &&
-               vertex_normals_.size() == vertices_.size();
-    }
-
-    bool HasVertexColors() const {
-        return vertices_.size() > 0 &&
-               vertex_colors_.size() == vertices_.size();
-    }
-
-    bool HasTriangleNormals() const {
-        return HasTriangles() && triangles_.size() == triangle_normals_.size();
-    }
-
-    bool HasAdjacencyList() const {
-        return vertices_.size() > 0 &&
-               adjacency_list_.size() == vertices_.size();
-    }
-
-    TriangleMesh &NormalizeNormals() {
-        for (size_t i = 0; i < vertex_normals_.size(); i++) {
-            vertex_normals_[i].normalize();
-            if (std::isnan(vertex_normals_[i](0))) {
-                vertex_normals_[i] = Eigen::Vector3d(0.0, 0.0, 1.0);
-            }
-        }
-        for (size_t i = 0; i < triangle_normals_.size(); i++) {
-            triangle_normals_[i].normalize();
-            if (std::isnan(triangle_normals_[i](0))) {
-                triangle_normals_[i] = Eigen::Vector3d(0.0, 0.0, 1.0);
-            }
-        }
-        return *this;
-    }
-
-    /// Assigns each vertex in the TriangleMesh the same color \param color.
-    TriangleMesh &PaintUniformColor(const Eigen::Vector3d &color) {
-        ResizeAndPaintUniformColor(vertex_colors_, vertices_.size(), color);
-        return *this;
-    }
 
     /// Function that computes the Euler-Poincaré characteristic, i.e.,
     /// V + F - E, where V is the number of vertices, F is the number
@@ -272,6 +242,13 @@ public:
                        utility::hash_eigen::hash<Eigen::Vector2i>>
     GetEdgeToTrianglesMap() const;
 
+    /// Function that returns a map from edges (vertex0, vertex1) to the
+    /// vertex (vertex2) indices the given edge belongs to.
+    std::unordered_map<Eigen::Vector2i,
+                       std::vector<int>,
+                       utility::hash_eigen::hash<Eigen::Vector2i>>
+    GetEdgeToVerticesMap() const;
+
     /// Function that computes the area of a mesh triangle
     static double ComputeTriangleArea(const Eigen::Vector3d &p0,
                                       const Eigen::Vector3d &p1,
@@ -280,6 +257,21 @@ public:
     /// Function that computes the area of a mesh triangle identified by the
     /// triangle index
     double GetTriangleArea(size_t triangle_idx) const;
+
+    static inline Eigen::Vector3i GetOrderedTriangle(int vidx0,
+                                                     int vidx1,
+                                                     int vidx2) {
+        if (vidx0 > vidx2) {
+            std::swap(vidx0, vidx2);
+        }
+        if (vidx0 > vidx1) {
+            std::swap(vidx0, vidx1);
+        }
+        if (vidx1 > vidx2) {
+            std::swap(vidx1, vidx2);
+        }
+        return Eigen::Vector3i(vidx0, vidx1, vidx2);
+    }
 
     /// Function that computes the surface area of the mesh, i.e. the sum of
     /// the individual triangle surfaces.
@@ -300,8 +292,10 @@ public:
     /// by the triangle index.
     Eigen::Vector4d GetTrianglePlane(size_t triangle_idx) const;
 
-    /// Function that computes the convex hull of the triangle mesh using qhull
-    std::shared_ptr<TriangleMesh> ComputeConvexHull() const;
+    /// Helper function to get an edge with ordered vertex indices.
+    static inline Eigen::Vector2i GetOrderedEdge(int vidx0, int vidx1) {
+        return Eigen::Vector2i(std::min(vidx0, vidx1), std::max(vidx0, vidx1));
+    }
 
     /// Function to sample \param number_of_points points uniformly from the
     /// mesh
@@ -341,8 +335,8 @@ public:
     /// The result can be a non-manifold mesh.
     std::shared_ptr<TriangleMesh> SimplifyVertexClustering(
             double voxel_size,
-            TriangleMesh::SimplificationContraction contraction =
-                    TriangleMesh::SimplificationContraction::Average) const;
+            SimplificationContraction contraction =
+                    SimplificationContraction::Average) const;
 
     /// Function to simplify mesh using Quadric Error Metric Decimation by
     /// Garland and Heckbert.
@@ -355,11 +349,89 @@ public:
     std::shared_ptr<TriangleMesh> SelectDownSample(
             const std::vector<size_t> &indices) const;
 
-    /// Function to crop \param input tringlemesh into output tringlemesh
-    /// All points with coordinates less than \param min_bound or larger than
-    /// \param max_bound are clipped.
-    std::shared_ptr<TriangleMesh> Crop(const Eigen::Vector3d &min_bound,
-                                       const Eigen::Vector3d &max_bound) const;
+    /// Function to crop pointcloud into output pointcloud
+    /// All points with coordinates outside the bounding box \param bbox are
+    /// clipped.
+    std::shared_ptr<TriangleMesh> Crop(
+            const AxisAlignedBoundingBox &bbox) const;
+
+    /// Function to crop pointcloud into output pointcloud
+    /// All points with coordinates outside the bounding box \param bbox are
+    /// clipped.
+    std::shared_ptr<TriangleMesh> Crop(const OrientedBoundingBox &bbox) const;
+
+    /// /brief Function that clusters connected triangles, i.e., triangles that
+    /// are connected via edges are assigned the same cluster index.
+    ///
+    /// \return a vector that contains the cluster index per
+    /// triangle, a second vector contains the number of triangles per
+    /// cluster, and a third vector contains the surface area per cluster.
+    std::tuple<std::vector<int>, std::vector<size_t>, std::vector<double>>
+    ClusterConnectedTriangles() const;
+
+    /// \brief This function removes the triangles with index in
+    /// \p triangle_indices. Call \ref RemoveUnreferencedVertices to clean up
+    /// vertices afterwards.
+    ///
+    /// \param triangle_indices Indices of the triangles that should be
+    /// removed.
+    void RemoveTrianglesByIndex(const std::vector<size_t> &triangle_indices);
+
+    /// \brief This function removes the triangles that are masked in
+    /// \p triangle_mask. Call \ref RemoveUnreferencedVertices to clean up
+    /// vertices afterwards.
+    ///
+    /// \param triangle_mask Mask of triangles that should be removed.
+    /// Should have same size as \ref triangles_.
+    void RemoveTrianglesByMask(const std::vector<bool> &triangle_mask);
+
+    /// \brief This function removes the vertices with index in
+    /// \p vertex_indices. Note that also all triangles associated with the
+    /// vertices are removeds.
+    ///
+    /// \param triangle_indices Indices of the triangles that should be
+    /// removed.
+    void RemoveVerticesByIndex(const std::vector<size_t> &vertex_indices);
+
+    /// \brief This function removes the vertices that are masked in
+    /// \p vertex_mask. Note that also all triangles associated with the
+    /// vertices are removed..
+    ///
+    /// \param vertex_mask Mask of vertices that should be removed.
+    /// Should have same size as \ref vertices_.
+    void RemoveVerticesByMask(const std::vector<bool> &vertex_mask);
+
+    /// \brief This function deforms the mesh using the method by
+    /// Sorkine and Alexa, "As-Rigid-As-Possible Surface Modeling", 2007.
+    ///
+    /// \param constraint_vertex_indices Indices of the triangle vertices that
+    /// should be constrained by the vertex positions in
+    /// constraint_vertex_positions.
+    /// \param constraint_vertex_positions Vertex positions used for the
+    /// constraints.
+    /// \param max_iter maximum number of iterations to minimize energy
+    /// functional. \return The deformed TriangleMesh
+    std::shared_ptr<TriangleMesh> DeformAsRigidAsPossible(
+            const std::vector<int> &constraint_vertex_indices,
+            const std::vector<Eigen::Vector3d> &constraint_vertex_positions,
+            size_t max_iter) const;
+
+    /// \brief Alpha shapes are a generalization of the convex hull. With
+    /// decreasing alpha value the shape schrinks and creates cavities.
+    /// See Edelsbrunner and Muecke, "Three-Dimensional Alpha Shapes", 1994.
+    /// \param pcd PointCloud for what the alpha shape should be computed.
+    /// \param alpha parameter to controll the shape. A very big value will
+    /// give a shape close to the convex hull.
+    /// \param tetra_mesh If not a nullptr, than uses this to construct the
+    /// alpha shape. Otherwise, ComputeDelaunayTetrahedralization is called.
+    /// \param pt_map Optional map from tetra_mesh vertex indices to pcd
+    /// points.
+    /// \return TriangleMesh of the alpha shape.
+    static std::shared_ptr<TriangleMesh> CreateFromPointCloudAlphaShape(
+            const PointCloud &pcd,
+            double alpha,
+            std::shared_ptr<TetraMesh> tetra_mesh = nullptr,
+            std::vector<size_t> *pt_map = nullptr);
 
     /// Function that computes a triangle mesh from a oriented PointCloud \param
     /// pcd. This implements the Ball Pivoting algorithm proposed in F.
@@ -372,6 +444,34 @@ public:
     /// created.
     static std::shared_ptr<TriangleMesh> CreateFromPointCloudBallPivoting(
             const PointCloud &pcd, const std::vector<double> &radii);
+
+    /// \brief Function that computes a triangle mesh from a oriented PointCloud
+    /// pcd. This implements the Screened Poisson Reconstruction proposed in
+    /// Kazhdan and Hoppe, "Screened Poisson Surface Reconstruction", 2013.
+    /// This function uses the original implementation by Kazhdan. See
+    /// https://github.com/mkazhdan/PoissonRecon
+    ///
+    /// \param pcd PointCloud with normals and optionally colors.
+    /// \param depth Maximum depth of the tree that will be used for surface
+    /// reconstruction. Running at depth d corresponds to solving on a grid
+    /// whose resolution is no larger than 2^d x 2^d x 2^d. Note that since the
+    /// reconstructor adapts the octree to the sampling density, the specified
+    /// reconstruction depth is only an upper bound.
+    /// \param width Specifies the
+    /// target width of the finest level octree cells. This parameter is ignored
+    /// if depth is specified.
+    /// \param scale Specifies the ratio between the
+    /// diameter of the cube used for reconstruction and the diameter of the
+    /// samples' bounding cube. \param linear_fit If true, the reconstructor use
+    /// linear interpolation to estimate the positions of iso-vertices.
+    /// \return The estimated TriangleMesh, and per vertex densitie values that
+    /// can be used to to trim the mesh.
+    static std::tuple<std::shared_ptr<TriangleMesh>, std::vector<double>>
+    CreateFromPointCloudPoisson(const PointCloud &pcd,
+                                size_t depth = 8,
+                                size_t width = 0,
+                                float scale = 1.1f,
+                                bool linear_fit = false);
 
     /// Factory function to create a tetrahedron mesh (trianglemeshfactory.cpp).
     /// the mesh centroid will be at (0,0,0) and \param radius defines the
@@ -479,7 +579,7 @@ public:
 
 protected:
     // Forward child class type to avoid indirect nonvirtual base
-    TriangleMesh(Geometry::GeometryType type) : Geometry3D(type) {}
+    TriangleMesh(Geometry::GeometryType type) : MeshBase(type) {}
 
     void FilterSmoothLaplacianHelper(
             std::shared_ptr<TriangleMesh> &mesh,
@@ -492,13 +592,30 @@ protected:
             bool filter_normal,
             bool filter_color) const;
 
+    /// \brief Function that computes for each edge in the triangle mesh and
+    /// passed as parameter edges_to_vertices the cot weight.
+    ///
+    /// \param edges_to_vertices map from edge to vector of neighbouring
+    /// vertices.
+    /// \param min_weight minimum weight returned. Weights smaller than this
+    /// get clamped.
+    /// \return cot weight per edge.
+    std::unordered_map<Eigen::Vector2i,
+                       double,
+                       utility::hash_eigen::hash<Eigen::Vector2i>>
+    ComputeEdgeWeightsCot(
+            const std::unordered_map<Eigen::Vector2i,
+                                     std::vector<int>,
+                                     utility::hash_eigen::hash<Eigen::Vector2i>>
+                    &edges_to_vertices,
+            double min_weight = std::numeric_limits<double>::lowest()) const;
+
 public:
-    std::vector<Eigen::Vector3d> vertices_;
-    std::vector<Eigen::Vector3d> vertex_normals_;
-    std::vector<Eigen::Vector3d> vertex_colors_;
     std::vector<Eigen::Vector3i> triangles_;
     std::vector<Eigen::Vector3d> triangle_normals_;
     std::vector<std::unordered_set<int>> adjacency_list_;
+    std::vector<Eigen::Vector2d> triangle_uvs_;
+    Image texture_;
 };
 
 }  // namespace geometry

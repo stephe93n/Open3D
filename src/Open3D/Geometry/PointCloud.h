@@ -50,6 +50,8 @@ class VoxelGrid;
 class PointCloud : public Geometry3D {
 public:
     PointCloud() : Geometry3D(Geometry::GeometryType::PointCloud) {}
+    PointCloud(const std::vector<Eigen::Vector3d> &points)
+        : Geometry3D(Geometry::GeometryType::PointCloud), points_(points) {}
     ~PointCloud() override {}
 
 public:
@@ -64,9 +66,7 @@ public:
     PointCloud &Translate(const Eigen::Vector3d &translation,
                           bool relative = true) override;
     PointCloud &Scale(const double scale, bool center = true) override;
-    PointCloud &Rotate(const Eigen::Vector3d &rotation,
-                       bool center = true,
-                       RotationType type = RotationType::XYZ) override;
+    PointCloud &Rotate(const Eigen::Matrix3d &R, bool center = true) override;
 
     PointCloud &operator+=(const PointCloud &cloud);
     PointCloud operator+(const PointCloud &cloud) const;
@@ -124,11 +124,15 @@ public:
     /// uniformly \param every_k_points indicates the sample rate.
     std::shared_ptr<PointCloud> UniformDownSample(size_t every_k_points) const;
 
-    /// Function to crop \param input pointcloud into output pointcloud
-    /// All points with coordinates less than \param min_bound or larger than
-    /// \param max_bound are clipped.
-    std::shared_ptr<PointCloud> Crop(const Eigen::Vector3d &min_bound,
-                                     const Eigen::Vector3d &max_bound) const;
+    /// Function to crop pointcloud into output pointcloud
+    /// All points with coordinates outside the bounding box \param bbox are
+    /// clipped.
+    std::shared_ptr<PointCloud> Crop(const AxisAlignedBoundingBox &bbox) const;
+
+    /// Function to crop pointcloud into output pointcloud
+    /// All points with coordinates outside the bounding box \param bbox are
+    /// clipped.
+    std::shared_ptr<PointCloud> Crop(const OrientedBoundingBox &bbox) const;
 
     /// Function to remove points that have less than \param nb_points in a
     /// sphere of radius \param search_radius
@@ -184,7 +188,19 @@ public:
     std::vector<double> ComputeNearestNeighborDistance() const;
 
     /// Function that computes the convex hull of the point cloud using qhull
-    std::shared_ptr<TriangleMesh> ComputeConvexHull() const;
+    std::tuple<std::shared_ptr<TriangleMesh>, std::vector<size_t>>
+    ComputeConvexHull() const;
+
+    /// This is an implementation of the Hidden Point Removal operator
+    /// described in Katz et. al. 'Direct Visibility of Point Sets', 2007.
+    /// \param camera_location is the view point that is used to remove
+    /// invisible points. \param radius defines the radius of the spherical
+    /// projection. Additional information about the choice of \param radius
+    /// for noisy point clouds can be found in Mehra et. al. 'Visibility of
+    /// Noisy Point Cloud Data', 2010.
+    std::tuple<std::shared_ptr<TriangleMesh>, std::vector<size_t>>
+    HiddenPointRemoval(const Eigen::Vector3d &camera_location,
+                       const double radius) const;
 
     /// Cluster PointCloud using the DBSCAN algorithm
     /// Ester et al., "A Density-Based Algorithm for Discovering Clusters

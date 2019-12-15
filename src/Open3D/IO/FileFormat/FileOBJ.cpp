@@ -28,8 +28,10 @@
 #include <numeric>
 #include <vector>
 
+#include "Open3D/IO/ClassIO/ImageIO.h"
 #include "Open3D/IO/ClassIO/TriangleMeshIO.h"
 #include "Open3D/Utility/Console.h"
+#include "Open3D/Utility/FileSystem.h"
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tinyobjloader/tiny_obj_loader.h"
@@ -45,14 +47,17 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
     std::vector<tinyobj::material_t> materials;
     std::string warn;
     std::string err;
+
+    std::string mtl_base_path =
+            utility::filesystem::GetFileParentDirectory(filename);
     bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
-                                filename.c_str());
+                                filename.c_str(), mtl_base_path.c_str());
 
     if (!warn.empty()) {
-        utility::LogWarning("Read OBJ failed: {}\n", warn);
+        utility::LogWarning("Read OBJ failed: {}", warn);
     }
     if (!err.empty()) {
-        utility::LogWarning("Read OBJ failed: {}\n", err);
+        utility::LogWarning("Read OBJ failed: {}", err);
     }
 
     if (!ret) {
@@ -61,13 +66,14 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
 
     mesh.Clear();
 
-    // copy vertex and vertex_color data
+    // copy vertex and data
     for (size_t vidx = 0; vidx < attrib.vertices.size(); vidx += 3) {
         tinyobj::real_t vx = attrib.vertices[vidx + 0];
         tinyobj::real_t vy = attrib.vertices[vidx + 1];
         tinyobj::real_t vz = attrib.vertices[vidx + 2];
         mesh.vertices_.push_back(Eigen::Vector3d(vx, vy, vz));
     }
+
     for (size_t vidx = 0; vidx < attrib.colors.size(); vidx += 3) {
         tinyobj::real_t r = attrib.colors[vidx + 0];
         tinyobj::real_t g = attrib.colors[vidx + 1];
@@ -80,6 +86,7 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
     std::vector<bool> normals_indicator(mesh.vertices_.size(), false);
 
     // copy face data and copy normals data
+    // append face-wise uv data
     for (size_t s = 0; s < shapes.size(); s++) {
         size_t index_offset = 0;
         for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
@@ -87,7 +94,7 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
             if (fv != 3) {
                 utility::LogWarning(
                         "Read OBJ failed: facet with number of vertices not "
-                        "equal to 3\n");
+                        "equal to 3");
                 return false;
             }
 
@@ -97,7 +104,7 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
                 int vidx = idx.vertex_index;
                 facet(v) = vidx;
 
-                if (!normals_indicator[vidx] &&
+                if (!attrib.normals.empty() && !normals_indicator[vidx] &&
                     (3 * idx.normal_index + 2) < int(attrib.normals.size())) {
                     tinyobj::real_t nx =
                             attrib.normals[3 * idx.normal_index + 0];
@@ -109,6 +116,15 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
                     mesh.vertex_normals_[vidx](1) = ny;
                     mesh.vertex_normals_[vidx](2) = nz;
                     normals_indicator[vidx] = true;
+                }
+
+                if (!attrib.texcoords.empty() &&
+                    2 * idx.texcoord_index + 1 < int(attrib.texcoords.size())) {
+                    tinyobj::real_t tx =
+                            attrib.texcoords[2 * idx.texcoord_index + 0];
+                    tinyobj::real_t ty =
+                            attrib.texcoords[2 * idx.texcoord_index + 1];
+                    mesh.triangle_uvs_.push_back(Eigen::Vector2d(tx, ty));
                 }
             }
             mesh.triangles_.push_back(facet);
@@ -123,6 +139,23 @@ bool ReadTriangleMeshFromOBJ(const std::string& filename,
     if (!all_normals_set) {
         mesh.vertex_normals_.clear();
     }
+
+    // if not all triangles have corresponding uvs, then remove uvs
+    if (3 * mesh.triangles_.size() != mesh.triangle_uvs_.size()) {
+        mesh.triangle_uvs_.clear();
+    }
+
+    // Now we assert only one shape is stored, we only select the first
+    // diffuse material
+    for (auto& material : materials) {
+        if (!material.diffuse_texname.empty()) {
+            mesh.texture_ = *(io::CreateImageFromFile(mtl_base_path +
+                                                      material.diffuse_texname)
+                                      ->FlipVertical());
+            break;
+        }
+    }
+
     return true;
 }
 
@@ -132,24 +165,34 @@ bool WriteTriangleMeshToOBJ(const std::string& filename,
                             bool compressed /* = false*/,
                             bool write_vertex_normals /* = true*/,
                             bool write_vertex_colors /* = true*/,
+                            bool write_triangle_uvs /* = true*/,
                             bool print_progress) {
-    std::ofstream file(filename.c_str(), std::ios::out | std::ios::binary);
+    std::string object_name = utility::filesystem::GetFileNameWithoutExtension(
+            utility::filesystem::GetFileNameWithoutDirectory(filename));
 
+    std::ofstream file(filename.c_str(), std::ios::out | std::ios::binary);
     if (!file) {
-        utility::LogWarning("Write OBJ failed: unable to open file.\n");
+        utility::LogWarning("Write OBJ failed: unable to open file.");
         return false;
     }
 
     if (mesh.HasTriangleNormals()) {
-        utility::LogWarning("Write OBJ can not include triangle normals.\n");
+        utility::LogWarning("Write OBJ can not include triangle normals.");
     }
 
-    file << "# Created by Open3D \n";
-    file << "# number of vertices: " << mesh.vertices_.size() << "\n";
-    file << "# number of triangles: " << mesh.triangles_.size() << "\n";
+    file << "# Created by Open3D " << std::endl;
+    file << "# object name: " << object_name << std::endl;
+    file << "# number of vertices: " << mesh.vertices_.size() << std::endl;
+    file << "# number of triangles: " << mesh.triangles_.size() << std::endl;
+
+    // always write material name in obj file, regardless of uvs or textures
+    file << "mtllib " << object_name << ".mtl" << std::endl;
+    file << "usemtl " << object_name << std::endl;
+
     utility::ConsoleProgressBar progress_bar(
             mesh.vertices_.size() + mesh.triangles_.size(),
             "Writing OBJ: ", print_progress);
+
     write_vertex_normals = write_vertex_normals && mesh.HasVertexNormals();
     write_vertex_colors = write_vertex_colors && mesh.HasVertexColors();
     for (size_t vidx = 0; vidx < mesh.vertices_.size(); ++vidx) {
@@ -159,28 +202,87 @@ bool WriteTriangleMeshToOBJ(const std::string& filename,
             const Eigen::Vector3d& color = mesh.vertex_colors_[vidx];
             file << " " << color(0) << " " << color(1) << " " << color(2);
         }
-        file << "\n";
+        file << std::endl;
 
         if (write_vertex_normals) {
             const Eigen::Vector3d& normal = mesh.vertex_normals_[vidx];
             file << "vn " << normal(0) << " " << normal(1) << " " << normal(2)
-                 << "\n";
+                 << std::endl;
         }
 
         ++progress_bar;
     }
 
+    // we are less strict and allows writing to uvs without known material
+    // potentially this will be useful for exporting conformal map generation
+    write_triangle_uvs = write_triangle_uvs && mesh.HasTriangleUvs();
+
+    // we don't compress uvs into vertex-wise representation.
+    // loose triangle-wise representation is provided
+    if (write_triangle_uvs) {
+        for (auto& uv : mesh.triangle_uvs_) {
+            file << "vt " << uv(0) << " " << uv(1) << std::endl;
+        }
+    }
+
     for (size_t tidx = 0; tidx < mesh.triangles_.size(); ++tidx) {
         const Eigen::Vector3i& triangle = mesh.triangles_[tidx];
-        if (write_vertex_normals) {
+        if (write_vertex_normals && write_triangle_uvs) {
+            file << "f ";
+            file << triangle(0) + 1 << "/" << 3 * tidx + 1 << "/"
+                 << triangle(0) + 1 << " ";
+            file << triangle(1) + 1 << "/" << 3 * tidx + 2 << "/"
+                 << triangle(1) + 1 << " ";
+            file << triangle(2) + 1 << "/" << 3 * tidx + 3 << "/"
+                 << triangle(2) + 1 << std::endl;
+        } else if (!write_vertex_normals && write_triangle_uvs) {
+            file << "f ";
+            file << triangle(0) + 1 << "/" << 3 * tidx + 1 << " ";
+            file << triangle(1) + 1 << "/" << 3 * tidx + 2 << " ";
+            file << triangle(2) + 1 << "/" << 3 * tidx + 3 << std::endl;
+        } else if (write_vertex_normals && !write_triangle_uvs) {
             file << "f " << triangle(0) + 1 << "//" << triangle(0) + 1 << " "
                  << triangle(1) + 1 << "//" << triangle(1) + 1 << " "
-                 << triangle(2) + 1 << "//" << triangle(2) + 1 << "\n";
+                 << triangle(2) + 1 << "//" << triangle(2) + 1 << std::endl;
         } else {
             file << "f " << triangle(0) + 1 << " " << triangle(1) + 1 << " "
-                 << triangle(2) + 1 << "\n";
+                 << triangle(2) + 1 << std::endl;
         }
         ++progress_bar;
+    }
+
+    // end of writing obj.
+    //////
+
+    //////
+    // start to write to mtl and texture
+    std::string parent_dir =
+            utility::filesystem::GetFileParentDirectory(filename);
+    std::string mtl_filename = parent_dir + object_name + ".mtl";
+    std::string tex_filename = parent_dir + object_name + ".png";
+
+    // write standard material info to mtl file
+    std::ofstream mtl_file(mtl_filename.c_str(), std::ios::out);
+    if (!mtl_file) {
+        utility::LogWarning(
+                "Write OBJ successful, but failed to write material file.");
+        return true;
+    }
+    mtl_file << "# Created by Open3D " << std::endl;
+    mtl_file << "# object name: " << object_name << std::endl;
+    mtl_file << "newmtl " << object_name << std::endl;
+    mtl_file << "Ka 1.000 1.000 1.000" << std::endl;
+    mtl_file << "Kd 1.000 1.000 1.000" << std::endl;
+    mtl_file << "Ks 0.000 0.000 0.000" << std::endl;
+
+    if (write_triangle_uvs && mesh.HasTexture()) {
+        if (!io::WriteImage(tex_filename, *mesh.texture_.FlipVertical())) {
+            utility::LogWarning(
+                    "Write OBJ successful, but failed to write texture "
+                    "file.");
+            return true;
+        }
+        mtl_file << "map_Kd " << object_name << ".png";
     }
 
     return true;

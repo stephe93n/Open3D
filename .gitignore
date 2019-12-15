@@ -35,11 +35,13 @@ __pycache__
 node_modules/
 static/
 *.old*
+compile_commands.json
 
 # Example resources
 examples/Python/ReconstructionSystem/dataset/
 examples/TestData/Armadillo.ply
 examples/TestData/Bunny.ply
+examples/TestData/eagle.ply
 examples/TestData/voxelized.ply
 examples/Python/Basic/voxel_grid_test.ply
 examples/Python/Benchmark/testdata/
@@ -56,3 +58,6 @@ examples/Python/Advanced/viewpoint.json
 examples/Python/Basic/copy_of_fragment.pcd
 examples/Python/Basic/copy_of_knot.ply
 examples/Python/Basic/copy_of_lena_color.jpg
+examples/Python/Basic/copy_of_crate.mtl
+examples/Python/Basic/copy_of_crate.png
+examples/Python/Basic/copy_of_crate.obj

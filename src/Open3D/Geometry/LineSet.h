@@ -44,6 +44,11 @@ class TetraMesh;
 class LineSet : public Geometry3D {
 public:
     LineSet() : Geometry3D(Geometry::GeometryType::LineSet) {}
+    LineSet(const std::vector<Eigen::Vector3d> &points,
+            const std::vector<Eigen::Vector2i> &lines)
+        : Geometry3D(Geometry::GeometryType::LineSet),
+          points_(points),
+          lines_(lines) {}
     ~LineSet() override {}
 
 public:
@@ -58,9 +63,7 @@ public:
     LineSet &Translate(const Eigen::Vector3d &translation,
                        bool relative = true) override;
     LineSet &Scale(const double scale, bool center = true) override;
-    LineSet &Rotate(const Eigen::Vector3d &rotation,
-                    bool center = true,
-                    RotationType type = RotationType::XYZ) override;
+    LineSet &Rotate(const Eigen::Matrix3d &R, bool center = true) override;
 
     LineSet &operator+=(const LineSet &lineset);
     LineSet operator+(const LineSet &lineset) const;

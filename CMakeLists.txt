@@ -1,17 +1,19 @@
 # References:
-# https://cmake.org/cmake/help/v3.0/
+# https://cmake.org/cmake/help/v3.1/
 # https://gitlab.kitware.com/cmake/community/wikis/doc/tutorials/
 
-cmake_minimum_required(VERSION 3.0.0)
+cmake_minimum_required(VERSION 3.1)
+set (CMAKE_CXX_STANDARD 11)
 
 add_custom_target(build_all_3rd_party_libs
-    COMMAND cmake -E echo "Custom target build_all_3rd_party_libs reached."
+    COMMAND ${CMAKE_COMMAND} -E echo "Custom target build_all_3rd_party_libs reached."
 )
 
-if (NOT CMAKE_VERSION VERSION_LESS "3.1")
-    cmake_policy(SET CMP0054 NEW)
-    set(OpenGL_GL_PREFERENCE LEGACY)
+if (NOT CMAKE_BUILD_TYPE)
+  message(STATUS "No CMAKE_BUILD_TYPE specified, default to Debug")
+  set(CMAKE_BUILD_TYPE "Debug")
 endif()
+string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
 
 # central location for specifying the Open3D version
 file(STRINGS "src/Open3D/version.txt" OPEN3D_VERSION_READ)
@@ -32,10 +34,10 @@ string(CONCAT PROJECT_VERSION_THREE_NUMBER "${OPEN3D_VERSION_MAJOR}"
                                            ".${OPEN3D_VERSION_MINOR}"
                                            ".${OPEN3D_VERSION_PATCH}")
 
-# pypi package name controls specifies the repository name on pypi
-# possbie names include:
-# - open3d: default name when building from source and for conda
-# - open3d-python: for PyPI
+# PyPI package name controls specifies the repository name on PyPI. The default
+# name is "open3d". In the past, for historical reasons, we've used the
+# following names for PyPI, while they are now deprecated:
+# - open3d-python
 # - py3d
 # - open3d-original
 # - open3d-official
@@ -74,6 +76,7 @@ option(BUILD_GLEW                "Build glew from source"                   OFF)
 option(BUILD_GLFW                "Build glfw from source"                   OFF)
 option(BUILD_JSONCPP             "Build json from source"                   OFF)
 option(BUILD_PNG                 "Build png from source"                    OFF)
+option(BUILD_JPEG                "Build jpeg-turbo from source"             ON)
 option(BUILD_PYBIND11            "Build pybind11 from source"               ON)
 option(BUILD_PYTHON_MODULE       "Build the python module"                  ON)
 option(BUILD_LIBREALSENSE        "Build support for Intel RealSense camera" OFF)
@@ -94,6 +97,16 @@ endif ()
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
+
+# headless rendering
+if (ENABLE_HEADLESS_RENDERING)
+    if (APPLE)
+        message(FATAL_ERROR "Headless rendering is not supported on Mac OS")
+        set(ENABLE_HEADLESS_RENDERING OFF)
+    else()
+        add_definitions(-DHEADLESS_RENDERING)
+    endif()
+endif()
 
 # Set OS-specific things here
 if (WIN32)
@@ -144,27 +157,29 @@ if (WIN32)
 elseif (CYGWIN)
     SET(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
     message(STATUS "Compiling on Cygwin")
-    # enable c++11
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     add_definitions(-DCYGWIN)
 elseif (APPLE)
     add_definitions(-DUNIX)
-    # enable c++11
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     add_compile_options(-Wno-deprecated-declarations)
     if (NOT BUILD_SHARED_LIBS)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden")
     endif (NOT BUILD_SHARED_LIBS)
-    # compile speed optimization for clang
-    add_definitions(-O3)
+    # In Release build -O3 will be added automatically by CMake
+    # We still enable -O3 at Debug build to optimize performance
+    if (uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+        add_definitions(-O3)
+    endif()
 elseif (UNIX)
     add_definitions(-DUNIX)
-    # enable c++11
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fPIC")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     add_compile_options(-Wno-deprecated-declarations)
     add_compile_options(-Wno-unused-result)
-    add_definitions(-O3)
+    # In Release build -O3 will be added automatically by CMake
+    # We still enable -O3 at debug build to optimize performance
+    if (uppercase_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+        add_definitions(-O3)
+    endif()
     # disable BUILD_LIBREALSENSE since it is not fully supported on Linux
     message(STATUS "Compiling on Unix")
     message(STATUS "Disable RealSense since it is not fully supported on Linux.")
@@ -227,7 +242,7 @@ include_directories(${3RDPARTY_INSTALL_PREFIX}/include)
 # libs in Open3D/build/3rdparty_install/lib.
 # This isn't required for Ubuntu/Mac since the link directory info is propagated
 # with the interface library. We still need this for Windows.
-link_directories(${CMAKE_PROJECT_NAME} ${3RDPARTY_INSTALL_PREFIX}/lib)
+link_directories(${3RDPARTY_INSTALL_PREFIX}/lib)
 
 # Handling dependencies
 add_subdirectory(3rdparty)
@@ -236,6 +251,11 @@ link_directories(${3RDPARTY_LIBRARY_DIRS})
 # set include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/src
+)
+
+# Suppress 3rdparty header warnings with SYSTEM
+include_directories(
+    SYSTEM
     ${PROJECT_SOURCE_DIR}/3rdparty
     ${3RDPARTY_INCLUDE_DIRS}
     ${PROJECT_SOURCE_DIR}/3rdparty/librealsense/include

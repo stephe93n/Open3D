@@ -28,6 +28,7 @@
 
 #include <json/json.h>
 #include <k4a/k4a.h>
+#include <map>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -38,20 +39,18 @@
 namespace open3d {
 namespace io {
 
-static std::unordered_map<k4a_image_format_t, std::string>
-        k4a_image_format_t_to_string({
-                {K4A_IMAGE_FORMAT_COLOR_MJPG, "K4A_IMAGE_FORMAT_COLOR_MJPG"},
-                {K4A_IMAGE_FORMAT_COLOR_NV12, "K4A_IMAGE_FORMAT_COLOR_NV12"},
-                {K4A_IMAGE_FORMAT_COLOR_YUY2, "K4A_IMAGE_FORMAT_COLOR_YUY2"},
-                {K4A_IMAGE_FORMAT_COLOR_BGRA32,
-                 "K4A_IMAGE_FORMAT_COLOR_BGRA32"},
-                {K4A_IMAGE_FORMAT_DEPTH16, "K4A_IMAGE_FORMAT_DEPTH16"},
-                {K4A_IMAGE_FORMAT_IR16, "K4A_IMAGE_FORMAT_IR16"},
-                {K4A_IMAGE_FORMAT_CUSTOM, "K4A_IMAGE_FORMAT_CUSTOM"},
-        });
+static std::map<k4a_image_format_t, std::string> k4a_image_format_t_to_string{
+        {K4A_IMAGE_FORMAT_COLOR_MJPG, "K4A_IMAGE_FORMAT_COLOR_MJPG"},
+        {K4A_IMAGE_FORMAT_COLOR_NV12, "K4A_IMAGE_FORMAT_COLOR_NV12"},
+        {K4A_IMAGE_FORMAT_COLOR_YUY2, "K4A_IMAGE_FORMAT_COLOR_YUY2"},
+        {K4A_IMAGE_FORMAT_COLOR_BGRA32, "K4A_IMAGE_FORMAT_COLOR_BGRA32"},
+        {K4A_IMAGE_FORMAT_DEPTH16, "K4A_IMAGE_FORMAT_DEPTH16"},
+        {K4A_IMAGE_FORMAT_IR16, "K4A_IMAGE_FORMAT_IR16"},
+        {K4A_IMAGE_FORMAT_CUSTOM, "K4A_IMAGE_FORMAT_CUSTOM"},
+};
 
-static std::unordered_map<k4a_color_resolution_t, std::string>
-        k4a_color_resolution_t_to_string({
+static std::map<k4a_color_resolution_t, std::string>
+        k4a_color_resolution_t_to_string{
                 {K4A_COLOR_RESOLUTION_OFF, "K4A_COLOR_RESOLUTION_OFF"},
                 {K4A_COLOR_RESOLUTION_720P, "K4A_COLOR_RESOLUTION_720P"},
                 {K4A_COLOR_RESOLUTION_1080P, "K4A_COLOR_RESOLUTION_1080P"},
@@ -59,49 +58,44 @@ static std::unordered_map<k4a_color_resolution_t, std::string>
                 {K4A_COLOR_RESOLUTION_1536P, "K4A_COLOR_RESOLUTION_1536P"},
                 {K4A_COLOR_RESOLUTION_2160P, "K4A_COLOR_RESOLUTION_2160P"},
                 {K4A_COLOR_RESOLUTION_3072P, "K4A_COLOR_RESOLUTION_3072P"},
-        });
+        };
 
-static std::unordered_map<k4a_depth_mode_t, std::string>
-        k4a_depth_mode_t_to_string({
-                {K4A_DEPTH_MODE_OFF, "K4A_DEPTH_MODE_OFF"},
-                {K4A_DEPTH_MODE_NFOV_2X2BINNED,
-                 "K4A_DEPTH_MODE_NFOV_2X2BINNED"},
-                {K4A_DEPTH_MODE_NFOV_UNBINNED, "K4A_DEPTH_MODE_NFOV_UNBINNED"},
-                {K4A_DEPTH_MODE_WFOV_2X2BINNED,
-                 "K4A_DEPTH_MODE_WFOV_2X2BINNED"},
-                {K4A_DEPTH_MODE_WFOV_UNBINNED, "K4A_DEPTH_MODE_WFOV_UNBINNED"},
-                {K4A_DEPTH_MODE_PASSIVE_IR, "K4A_DEPTH_MODE_PASSIVE_IR"},
-        });
+static std::map<k4a_depth_mode_t, std::string> k4a_depth_mode_t_to_string{
+        {K4A_DEPTH_MODE_OFF, "K4A_DEPTH_MODE_OFF"},
+        {K4A_DEPTH_MODE_NFOV_2X2BINNED, "K4A_DEPTH_MODE_NFOV_2X2BINNED"},
+        {K4A_DEPTH_MODE_NFOV_UNBINNED, "K4A_DEPTH_MODE_NFOV_UNBINNED"},
+        {K4A_DEPTH_MODE_WFOV_2X2BINNED, "K4A_DEPTH_MODE_WFOV_2X2BINNED"},
+        {K4A_DEPTH_MODE_WFOV_UNBINNED, "K4A_DEPTH_MODE_WFOV_UNBINNED"},
+        {K4A_DEPTH_MODE_PASSIVE_IR, "K4A_DEPTH_MODE_PASSIVE_IR"},
+};
 
-static std::unordered_map<k4a_fps_t, std::string> k4a_fps_t_to_string({
+static std::map<k4a_fps_t, std::string> k4a_fps_t_to_string{
         {K4A_FRAMES_PER_SECOND_5, "K4A_FRAMES_PER_SECOND_5"},
         {K4A_FRAMES_PER_SECOND_15, "K4A_FRAMES_PER_SECOND_15"},
         {K4A_FRAMES_PER_SECOND_30, "K4A_FRAMES_PER_SECOND_30"},
-});
+};
 
-static std::unordered_map<k4a_wired_sync_mode_t, std::string>
-        k4a_wired_sync_mode_t_to_string({
+static std::map<k4a_wired_sync_mode_t, std::string>
+        k4a_wired_sync_mode_t_to_string{
                 {K4A_WIRED_SYNC_MODE_STANDALONE,
                  "K4A_WIRED_SYNC_MODE_STANDALONE"},
                 {K4A_WIRED_SYNC_MODE_MASTER, "K4A_WIRED_SYNC_MODE_MASTER"},
                 {K4A_WIRED_SYNC_MODE_SUBORDINATE,
                  "K4A_WIRED_SYNC_MODE_SUBORDINATE"},
-        });
+        };
 
-static std::unordered_map<std::string, k4a_image_format_t>
-        string_to_k4a_image_format_t({
-                {"K4A_IMAGE_FORMAT_COLOR_MJPG", K4A_IMAGE_FORMAT_COLOR_MJPG},
-                {"K4A_IMAGE_FORMAT_COLOR_NV12", K4A_IMAGE_FORMAT_COLOR_NV12},
-                {"K4A_IMAGE_FORMAT_COLOR_YUY2", K4A_IMAGE_FORMAT_COLOR_YUY2},
-                {"K4A_IMAGE_FORMAT_COLOR_BGRA32",
-                 K4A_IMAGE_FORMAT_COLOR_BGRA32},
-                {"K4A_IMAGE_FORMAT_DEPTH16", K4A_IMAGE_FORMAT_DEPTH16},
-                {"K4A_IMAGE_FORMAT_IR16", K4A_IMAGE_FORMAT_IR16},
-                {"K4A_IMAGE_FORMAT_CUSTOM", K4A_IMAGE_FORMAT_CUSTOM},
-        });
+static std::map<std::string, k4a_image_format_t> string_to_k4a_image_format_t({
+        {"K4A_IMAGE_FORMAT_COLOR_MJPG", K4A_IMAGE_FORMAT_COLOR_MJPG},
+        {"K4A_IMAGE_FORMAT_COLOR_NV12", K4A_IMAGE_FORMAT_COLOR_NV12},
+        {"K4A_IMAGE_FORMAT_COLOR_YUY2", K4A_IMAGE_FORMAT_COLOR_YUY2},
+        {"K4A_IMAGE_FORMAT_COLOR_BGRA32", K4A_IMAGE_FORMAT_COLOR_BGRA32},
+        {"K4A_IMAGE_FORMAT_DEPTH16", K4A_IMAGE_FORMAT_DEPTH16},
+        {"K4A_IMAGE_FORMAT_IR16", K4A_IMAGE_FORMAT_IR16},
+        {"K4A_IMAGE_FORMAT_CUSTOM", K4A_IMAGE_FORMAT_CUSTOM},
+});
 
-static std::unordered_map<std::string, k4a_color_resolution_t>
-        string_to_k4a_color_resolution_t({
+static std::map<std::string, k4a_color_resolution_t>
+        string_to_k4a_color_resolution_t{
                 {"K4A_COLOR_RESOLUTION_OFF", K4A_COLOR_RESOLUTION_OFF},
                 {"K4A_COLOR_RESOLUTION_720P", K4A_COLOR_RESOLUTION_720P},
                 {"K4A_COLOR_RESOLUTION_1080P", K4A_COLOR_RESOLUTION_1080P},
@@ -109,34 +103,31 @@ static std::unordered_map<std::string, k4a_color_resolution_t>
                 {"K4A_COLOR_RESOLUTION_1536P", K4A_COLOR_RESOLUTION_1536P},
                 {"K4A_COLOR_RESOLUTION_2160P", K4A_COLOR_RESOLUTION_2160P},
                 {"K4A_COLOR_RESOLUTION_3072P", K4A_COLOR_RESOLUTION_3072P},
-        });
+        };
 
-static std::unordered_map<std::string, k4a_depth_mode_t>
-        string_to_k4a_depth_mode_t({
-                {"K4A_DEPTH_MODE_OFF", K4A_DEPTH_MODE_OFF},
-                {"K4A_DEPTH_MODE_NFOV_2X2BINNED",
-                 K4A_DEPTH_MODE_NFOV_2X2BINNED},
-                {"K4A_DEPTH_MODE_NFOV_UNBINNED", K4A_DEPTH_MODE_NFOV_UNBINNED},
-                {"K4A_DEPTH_MODE_WFOV_2X2BINNED",
-                 K4A_DEPTH_MODE_WFOV_2X2BINNED},
-                {"K4A_DEPTH_MODE_WFOV_UNBINNED", K4A_DEPTH_MODE_WFOV_UNBINNED},
-                {"K4A_DEPTH_MODE_PASSIVE_IR", K4A_DEPTH_MODE_PASSIVE_IR},
-        });
+static std::map<std::string, k4a_depth_mode_t> string_to_k4a_depth_mode_t{
+        {"K4A_DEPTH_MODE_OFF", K4A_DEPTH_MODE_OFF},
+        {"K4A_DEPTH_MODE_NFOV_2X2BINNED", K4A_DEPTH_MODE_NFOV_2X2BINNED},
+        {"K4A_DEPTH_MODE_NFOV_UNBINNED", K4A_DEPTH_MODE_NFOV_UNBINNED},
+        {"K4A_DEPTH_MODE_WFOV_2X2BINNED", K4A_DEPTH_MODE_WFOV_2X2BINNED},
+        {"K4A_DEPTH_MODE_WFOV_UNBINNED", K4A_DEPTH_MODE_WFOV_UNBINNED},
+        {"K4A_DEPTH_MODE_PASSIVE_IR", K4A_DEPTH_MODE_PASSIVE_IR},
+};
 
-static std::unordered_map<std::string, k4a_fps_t> string_to_k4a_fps_t({
+static std::map<std::string, k4a_fps_t> string_to_k4a_fps_t{
         {"K4A_FRAMES_PER_SECOND_5", K4A_FRAMES_PER_SECOND_5},
         {"K4A_FRAMES_PER_SECOND_15", K4A_FRAMES_PER_SECOND_15},
         {"K4A_FRAMES_PER_SECOND_30", K4A_FRAMES_PER_SECOND_30},
-});
+};
 
-static std::unordered_map<std::string, k4a_wired_sync_mode_t>
-        string_to_k4a_wired_sync_mode_t({
+static std::map<std::string, k4a_wired_sync_mode_t>
+        string_to_k4a_wired_sync_mode_t{
                 {"K4A_WIRED_SYNC_MODE_STANDALONE",
                  K4A_WIRED_SYNC_MODE_STANDALONE},
                 {"K4A_WIRED_SYNC_MODE_MASTER", K4A_WIRED_SYNC_MODE_MASTER},
                 {"K4A_WIRED_SYNC_MODE_SUBORDINATE",
                  K4A_WIRED_SYNC_MODE_SUBORDINATE},
-        });
+        };
 
 static std::unordered_map<std::string, std::string> standard_config{
         {"color_format", "K4A_IMAGE_FORMAT_COLOR_MJPG"},
@@ -163,8 +154,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
     for (const auto &it : config) {
         if (standard_config.find(it.first) == standard_config.end()) {
             rc = false;
-            utility::LogWarning("IsValidConfig: Unrecognized key {}\n",
-                                it.first);
+            utility::LogWarning("IsValidConfig: Unrecognized key {}", it.first);
         }
     }
 
@@ -172,7 +162,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
         string_to_k4a_image_format_t.count(config.at("color_format")) == 0) {
         rc = false;
         if (verbose) {
-            utility::LogWarning("IsValidConfig: color_format invalid\n");
+            utility::LogWarning("IsValidConfig: color_format invalid");
         }
     }
 
@@ -181,7 +171,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
                 0) {
         rc = false;
         if (verbose) {
-            utility::LogWarning("IsValidConfig: color_resolution invalid\n");
+            utility::LogWarning("IsValidConfig: color_resolution invalid");
         }
     }
 
@@ -189,7 +179,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
         string_to_k4a_depth_mode_t.count(config.at("depth_mode")) == 0) {
         rc = false;
         if (verbose) {
-            utility::LogWarning("IsValidConfig: depth_mode invalid\n");
+            utility::LogWarning("IsValidConfig: depth_mode invalid");
         }
     }
 
@@ -197,7 +187,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
         string_to_k4a_fps_t.count(config.at("camera_fps")) == 0) {
         rc = false;
         if (verbose) {
-            utility::LogWarning("IsValidConfig: camera_fps invalid\n");
+            utility::LogWarning("IsValidConfig: camera_fps invalid");
         }
     } else {
         if (config.count("camera_fps") != 0 &&
@@ -207,7 +197,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
             rc = false;
             if (verbose) {
                 utility::LogWarning(
-                        "K4A_COLOR_RESOLUTION_3072P does not support 30 FPS\n");
+                        "K4A_COLOR_RESOLUTION_3072P does not support 30 FPS");
             }
         }
     }
@@ -218,7 +208,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
         rc = false;
         if (verbose) {
             utility::LogWarning(
-                    "IsValidConfig: synchronized_images_only invalid\n");
+                    "IsValidConfig: synchronized_images_only invalid");
         }
     }
 
@@ -227,7 +217,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
                 0) {
         rc = false;
         if (verbose) {
-            utility::LogWarning("IsValidConfig: wired_sync_mode invalid\n");
+            utility::LogWarning("IsValidConfig: wired_sync_mode invalid");
         }
     }
 
@@ -237,7 +227,7 @@ bool AzureKinectSensorConfig::IsValidConfig(
         rc = false;
         if (verbose) {
             utility::LogWarning(
-                    "IsValidConfig: disable_streaming_indicator invalid\n");
+                    "IsValidConfig: disable_streaming_indicator invalid");
         }
     }
 
@@ -248,7 +238,7 @@ AzureKinectSensorConfig::AzureKinectSensorConfig(
         const std::unordered_map<std::string, std::string> &config)
     : AzureKinectSensorConfig() {
     if (!IsValidConfig(config)) {
-        utility::LogWarning("Invalid configs, default configs will be used.\n");
+        utility::LogWarning("Invalid configs, default configs will be used.");
         return;
     }
     for (const auto &it : config) {
@@ -303,7 +293,7 @@ void AzureKinectSensorConfig::ConvertFromNativeConfig(
     if (!IsValidConfig(config_)) {
         utility::LogError(
                 "Internal error, invalid configs. Maybe SDK version is "
-                "mismatched.\n");
+                "mismatched.");
     }
 }
 

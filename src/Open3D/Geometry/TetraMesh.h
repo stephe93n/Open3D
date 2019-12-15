@@ -31,7 +31,7 @@
 #include <memory>
 #include <vector>
 
-#include "Open3D/Geometry/Geometry3D.h"
+#include "Open3D/Geometry/MeshBase.h"
 #include "Open3D/Utility/Eigen.h"
 #include "Open3D/Utility/Helper.h"
 
@@ -41,26 +41,18 @@ namespace geometry {
 class PointCloud;
 class TriangleMesh;
 
-class TetraMesh : public Geometry3D {
+class TetraMesh : public MeshBase {
 public:
-    TetraMesh() : Geometry3D(Geometry::GeometryType::TetraMesh) {}
+    TetraMesh() : MeshBase(Geometry::GeometryType::TetraMesh) {}
+    TetraMesh(const std::vector<Eigen::Vector3d> &vertices,
+              const std::vector<Eigen::Vector4i, utility::Vector4i_allocator>
+                      &tetras)
+        : MeshBase(Geometry::GeometryType::TetraMesh, vertices),
+          tetras_(tetras) {}
     ~TetraMesh() override {}
 
 public:
     TetraMesh &Clear() override;
-    bool IsEmpty() const override;
-    Eigen::Vector3d GetMinBound() const override;
-    Eigen::Vector3d GetMaxBound() const override;
-    Eigen::Vector3d GetCenter() const override;
-    AxisAlignedBoundingBox GetAxisAlignedBoundingBox() const override;
-    OrientedBoundingBox GetOrientedBoundingBox() const override;
-    TetraMesh &Transform(const Eigen::Matrix4d &transformation) override;
-    TetraMesh &Translate(const Eigen::Vector3d &translation,
-                         bool relative = true) override;
-    TetraMesh &Scale(const double scale, bool center = true) override;
-    TetraMesh &Rotate(const Eigen::Vector3d &rotation,
-                      bool center = true,
-                      RotationType type = RotationType::XYZ) override;
 
 public:
     TetraMesh &operator+=(const TetraMesh &mesh);
@@ -83,8 +75,6 @@ public:
     /// They are usually the product of removing duplicated vertices.
     TetraMesh &RemoveDegenerateTetras();
 
-    bool HasVertices() const { return vertices_.size() > 0; }
-
     bool HasTetras() const {
         return vertices_.size() > 0 && tetras_.size() > 0;
     }
@@ -99,15 +89,14 @@ public:
     /// Function that creates a tetrahedral mesh (TetraMeshFactory.cpp).
     /// from a point cloud. The method creates the Delaunay triangulation
     /// using the implementation from Qhull.
-    static std::shared_ptr<TetraMesh> CreateFromPointCloud(
-            const PointCloud &point_cloud);
+    static std::tuple<std::shared_ptr<TetraMesh>, std::vector<size_t>>
+    CreateFromPointCloud(const PointCloud &point_cloud);
 
 protected:
     // Forward child class type to avoid indirect nonvirtual base
-    TetraMesh(Geometry::GeometryType type) : Geometry3D(type) {}
+    TetraMesh(Geometry::GeometryType type) : MeshBase(type) {}
 
 public:
-    std::vector<Eigen::Vector3d> vertices_;
     std::vector<Eigen::Vector4i, utility::Vector4i_allocator> tetras_;
 };
 
