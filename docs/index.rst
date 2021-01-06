@@ -18,38 +18,59 @@ Open3D: A Modern Library for 3D Data Processing
     Contents:
 
 .. toctree::
+    :maxdepth: 1
+    :caption: Getting Started
 
     introduction
     getting_started
     compilation
+    cpp_project
     builddocs
-    contribute
+    open3d_ml
+    arm
 
-.. _tutorial_index:
+
+.. toctree::
+    :maxdepth: 2
+    :caption: Tutorial
+
+    tutorial/geometry/index
+    tutorial/pipelines/index
+    tutorial/visualization/index
+    tutorial/core/index
+    tutorial/reconstruction_system/index
+    tutorial/sensor/index
+    tutorial/reference
+
 
 .. toctree::
     :maxdepth: 1
-    :caption: Tutorial
+    :caption: Contribute
 
-    tutorial/Basic/index
-    tutorial/Advanced/index
-    tutorial/ReconstructionSystem/index
-    tutorial/C++/cplusplus_interface
-    tutorial/docker/index
-    tutorial/reference
+    contribute/contribute
+    contribute/contribution_recipes
+    contribute/styleguide
 
-.. _python_api_index:
+
+.. toctree::
+    :maxdepth: 1
+    :caption: C++ API
+
+    cpp_api
+
+
+.. Note: when adding new modules, please also update documented_modules.txt.
 
 .. toctree::
     :maxdepth: 1
     :caption: Python API
 
     python_api/open3d.camera
-    python_api/open3d.color_map
+    python_api/open3d.core
     python_api/open3d.geometry
     python_api/open3d.io
-    python_api/open3d.integration
-    python_api/open3d.odometry
-    python_api/open3d.registration
+    python_api/open3d.t
+    python_api/open3d.ml
+    python_api/open3d.pipelines
     python_api/open3d.utility
     python_api/open3d.visualization
